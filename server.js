@@ -1,110 +1,97 @@
 import express from "express";
 import cors from "cors";
-import { GoogleGenAI } from "@google/genai";
 
 const app = express();
 
-app.use(cors({ origin: true }));
+app.use(cors({
+  origin: true,
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
 app.use(express.json());
-
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY
-});
-
-const SHEET_HOLIDAYS_BRAIN = `
-You are the AI Employee of SHEET HOLIDAYS.
-
-Business: Sheet Holidays
-Travel Agency | Hotels | Holiday Packages | Taxi | B2B Travel
-
-WhatsApp: +91 73884 42233
-Website: https://www.sheetholidays.com
-
-Your job:
-- Act as a professional travel consultant and sales executive.
-- Help customers with holidays, hotels, taxis and travel planning.
-- Ask destination, travel dates, number of travellers and budget.
-- Recommend Sheet Holidays packages when relevant.
-- Never invent live hotel availability or booking confirmation.
-- Never claim a booking is confirmed unless an actual booking system confirms it.
-- Keep replies friendly, concise and sales-oriented.
-
-Known Kashmir package:
-5 Nights / 6 Days from ₹11,999 per person.
-Destinations: Srinagar, Gulmarg, Sonmarg and Pahalgam.
-Pahalgam can be planned for 2 days depending on itinerary.
-
-For a quotation, collect:
-travel date, adults, children, hotel category, rooms, budget,
-pickup/drop location and taxi requirement.
-
-WhatsApp:
-+91 73884 42233
-`;
 
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
-    service: "Sheet Holidays AI Employee",
-    ai: "Gemini"
+    service: "Sheet Holidays AI (Gemini Direct)",
+    message: "AI server is running"
   });
 });
 
-app.get("/api/health", (req, res) => {
-  res.json({
-    status: "ok",
-    geminiKeyConfigured: Boolean(process.env.GEMINI_API_KEY)
-  });
-});
+const SHEET_HOLIDAYS_BRAIN = `
+You are the AI Employee of SHEET HOLIDAYS.
+Business: Sheet Holidays | Travel Agency | Hotels | Holiday Packages | Taxi | B2B Travel
+WhatsApp: +91 73884 42233
+Website: https://www.sheetholidays.com
+
+Your responsibilities:
+1. Understand customer travel requirements.
+2. Ask destination, dates, travellers and budget.
+3. Recommend relevant Sheet Holidays packages.
+4. Help with hotels, taxis and holiday packages.
+5. Never invent live availability or prices not provided.
+6. When customer has serious enquiry, give WhatsApp: +91 73884 42233
+`;
 
 app.post("/api/chat", async (req, res) => {
   try {
+    const { messages = [], customer = {} } = req.body;
 
-    const messages = Array.isArray(req.body.messages)
-      ? req.body.messages
-      : [];
+    if (!Array.isArray(messages)) {
+      return res.status(400).json({ error: "messages must be an array" });
+    }
 
-    const conversation = messages
-      .slice(-20)
-      .map((m) => {
-        const role = m.role === "assistant"
-          ? "model"
-          : "user";
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+    if (!geminiApiKey) {
+      throw new Error("GEMINI_API_KEY is not configured in environment variables.");
+    }
 
-        return `${role}: ${String(m.content || "")}`;
-      })
-      .join("\n");
+    // Convert messages to Gemini format
+    const contents = messages.slice(-20).map((msg) => ({
+      role: msg.role === "assistant" ? "model" : "user",
+      parts: [{ text: String(msg.content || "") }]
+    }));
 
-    const prompt = `
-${SHEET_HOLIDAYS_BRAIN}
+    // Add system instruction as the first user/model context or use systemInstruction field
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          system_instruction: {
+            parts: [{ text: SHEET_HOLIDAYS_BRAIN }]
+          },
+          contents: contents
+        })
+      }
+    );
 
-Conversation:
-${conversation}
+    const data = await response.json();
 
-Respond to the customer's latest message.
-`;
+    if (data.error) {
+      throw new Error(data.error.message || "Gemini API error");
+    }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
-      contents: prompt
-    });
+    const reply =
+      data.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "Ji, Sheet Holidays mein aapki travel enquiry mein help karte hain. Destination aur travel date bataiye.";
 
     res.json({
-      reply: response.text || "Ji, main Sheet Holidays mein aapki help karta hoon."
+      reply: reply,
+      customer: customer
     });
 
   } catch (error) {
-
-    console.error("GEMINI ERROR:", error);
-
+    console.error("GEMINI DIRECT CHAT ERROR:", error);
     res.status(500).json({
-      error: error?.message || "Gemini service failed"
+      error: error?.message || "AI request failed"
     });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Sheet Holidays Gemini AI running on port ${PORT}`);
+  console.log(`Sheet Holidays AI running on port ${PORT}`);
 });
