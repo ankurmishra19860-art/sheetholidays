@@ -52,9 +52,9 @@ app.post("/api/chat", async (req, res) => {
       parts: [{ text: String(msg.content || "") }]
     }));
 
-    // Updated to use gemini-2.0-flash model to fix the 404 Not Found error
+    // Updated to use the correct gemini-3.6-flash model
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${geminiApiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
