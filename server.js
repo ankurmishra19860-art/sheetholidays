@@ -44,7 +44,7 @@ app.post("/api/chat", async (req, res) => {
 
     const geminiApiKey = process.env.GEMINI_API_KEY;
     if (!geminiApiKey) {
-      return res.status(500).json({ reply: "Server Error: GEMINI_API_KEY missing in Render." });
+      return res.status(200).json({ reply: "Server Error: GEMINI_API_KEY missing in Render." });
     }
 
     const contents = messages.slice(-20).map((msg) => ({
@@ -52,8 +52,9 @@ app.post("/api/chat", async (req, res) => {
       parts: [{ text: String(msg.content || "") }]
     }));
 
+    // Updated to use gemini-2.0-flash model to fix the 404 Not Found error
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -69,7 +70,6 @@ app.post("/api/chat", async (req, res) => {
     const data = await response.json();
 
     if (data.error) {
-      // Yeh line Google API ki asli error seedha chat mein dikha degi
       return res.status(200).json({
         reply: `Google API Error: ${data.error.message} (Code: ${data.error.code})`
       });
