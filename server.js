@@ -53,9 +53,9 @@ app.post("/api/chat", async (req, res) => {
       parts: [{ text: String(msg.content || "") }]
     }));
 
-    // Using gemini-2.5-flash model
+    // Using the stable and correct gemini-1.5-flash model
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -76,7 +76,7 @@ app.post("/api/chat", async (req, res) => {
 
     const reply =
       data.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "Ji, Sheet Holidays mein aapki travel enquiry mein help karte hain. Destination aur travel date bataiye.";
+      "Ji, Sheet Holidays mein aapki travel enquiry mein help karte hain. WhatsApp: +91 73884 42233 par contact karein.";
 
     res.json({
       reply: reply,
