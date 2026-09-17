@@ -1,76 +1,104 @@
 import express from "express";
 import cors from "cors";
-import OpenAI from "openai";
+import { GoogleGenAI } from "@google/genai";
 
 const app = express();
 
 app.use(cors({ origin: true }));
 app.use(express.json());
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY
 });
+
+const SHEET_HOLIDAYS_BRAIN = `
+You are the AI Employee of SHEET HOLIDAYS.
+
+Business: Sheet Holidays
+Travel Agency | Hotels | Holiday Packages | Taxi | B2B Travel
+
+WhatsApp: +91 73884 42233
+Website: https://www.sheetholidays.com
+
+Your job:
+- Act as a professional travel consultant and sales executive.
+- Help customers with holidays, hotels, taxis and travel planning.
+- Ask destination, travel dates, number of travellers and budget.
+- Recommend Sheet Holidays packages when relevant.
+- Never invent live hotel availability or booking confirmation.
+- Never claim a booking is confirmed unless an actual booking system confirms it.
+- Keep replies friendly, concise and sales-oriented.
+
+Known Kashmir package:
+5 Nights / 6 Days from ₹11,999 per person.
+Destinations: Srinagar, Gulmarg, Sonmarg and Pahalgam.
+Pahalgam can be planned for 2 days depending on itinerary.
+
+For a quotation, collect:
+travel date, adults, children, hotel category, rooms, budget,
+pickup/drop location and taxi requirement.
+
+WhatsApp:
++91 73884 42233
+`;
 
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
-    service: "Sheet Holidays AI Employee"
+    service: "Sheet Holidays AI Employee",
+    ai: "Gemini"
   });
 });
 
 app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
-    openaiKeyConfigured: !!process.env.OPENAI_API_KEY
+    geminiKeyConfigured: Boolean(process.env.GEMINI_API_KEY)
   });
 });
 
 app.post("/api/chat", async (req, res) => {
-
   try {
 
     const messages = Array.isArray(req.body.messages)
       ? req.body.messages
       : [];
 
-    const response = await client.responses.create({
-      model: "gpt-5",
-      instructions: `
-You are the AI Employee of Sheet Holidays.
+    const conversation = messages
+      .slice(-20)
+      .map((m) => {
+        const role = m.role === "assistant"
+          ? "model"
+          : "user";
 
-Sheet Holidays is a travel agency providing:
-- Kashmir holiday packages
-- Hotels
-- Taxi
-- B2B travel services
-- India and international holidays
+        return `${role}: ${String(m.content || "")}`;
+      })
+      .join("\n");
 
-WhatsApp: +91 73884 42233
-Website: https://www.sheetholidays.com
+    const prompt = `
+${SHEET_HOLIDAYS_BRAIN}
 
-Known Kashmir package:
-5 Nights / 6 Days from ₹11,999 per person.
-Covers Srinagar, Gulmarg, Sonmarg and Pahalgam.
+Conversation:
+${conversation}
 
-Be a helpful travel sales executive.
-Ask for travel date, number of travellers and budget when needed.
-Do not invent live availability or booking confirmation.
-`,
-      input: messages.slice(-20)
+Respond to the customer's latest message.
+`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.8-flash",
+      contents: prompt
     });
 
     res.json({
-      reply: response.output_text
+      reply: response.text || "Ji, main Sheet Holidays mein aapki help karta hoon."
     });
 
   } catch (error) {
 
-    console.error("OPENAI ERROR:", error);
+    console.error("GEMINI ERROR:", error);
 
     res.status(500).json({
-      error: error?.message || "AI service failed",
-      code: error?.code || null,
-      status: error?.status || null
+      error: error?.message || "Gemini service failed"
     });
   }
 });
@@ -78,5 +106,5 @@ Do not invent live availability or booking confirmation.
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Sheet Holidays AI running on port ${PORT}`);
+  console.log(`Sheet Holidays Gemini AI running on port ${PORT}`);
 });
