@@ -15,7 +15,7 @@ app.get("/", (req, res) => {
   res.json({
     status: "ok",
     service: "Sheet Holidays Autonomous AI Travel Employee",
-    message: "AI server is running live"
+    message: "AI server is running live with auto-retry logic"
   });
 });
 
@@ -59,31 +59,55 @@ app.post("/api/chat", async (req, res) => {
       parts: [{ text: String(msg.content || "") }]
     }));
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${geminiApiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          system_instruction: {
-            parts: [{ text: SHEET_HOLIDAYS_BRAIN }]
-          },
-          contents: contents
-        })
+    let response;
+    let data;
+    let retries = 4; // 4 baar try karega agar high demand aayi toh
+    let delay = 1500; // Har try ke beech 1.5 second ka gap
+
+    while (retries > 0) {
+      try {
+        response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              system_instruction: {
+                parts: [{ text: SHEET_HOLIDAYS_BRAIN }]
+              },
+              contents: contents
+            })
+          }
+        );
+
+        data = await response.json();
+
+        // Agar successfully data aa gaya aur error nahi hai, toh loop tod do
+        if (!data.error) {
+          break;
+        }
+
+        // Agar high demand error hai, toh thoda ruk kar fir se try karega (frontend par typing indicator chalta rahega)
+        console.log(`Gemini busy/high demand. Retries left: ${retries - 1}`);
+      } catch (err) {
+        console.log("Fetch attempt failed, retrying...", err.message);
       }
-    );
 
-    const data = await response.json();
+      retries--;
+      if (retries > 0) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay += 1000; // Har baar thoda aur wait time badha do (backoff)
+      }
+    }
 
-    if (data.error) {
+    // Agar saare retries ke baad bhi error ya empty data aaye
+    if (!data || data.error || !data.candidates?.[0]?.content?.parts?.[0]?.text) {
       return res.status(200).json({
-        reply: `Google API Error: ${data.error.message}. Please try again later.`
+        reply: "Bhai, abhi thoda zyada load hai network par. Aap bataiye, kahan ka plan hai aur kitne log hain? Main turant note kar raha hoon!"
       });
     }
 
-    const reply =
-      data.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "Namaste ji! Sheet Holidays mein aapka swagat hai. Kripya apni travel requirements share karein.";
+    const reply = data.candidates[0].content.parts[0].text;
 
     res.json({
       reply: reply,
@@ -93,7 +117,7 @@ app.post("/api/chat", async (req, res) => {
   } catch (error) {
     console.error("CRITICAL ERROR:", error);
     res.status(200).json({
-      reply: "Connection problem. WhatsApp par Sheet Holidays team se contact karein: +91 73884 42233"
+      reply: "Namaste ji! Network issue ki wajah se thoda time lag gaya. Aap apni travel dates aur destination batayein, hum turant dekhte hain."
     });
   }
 });
