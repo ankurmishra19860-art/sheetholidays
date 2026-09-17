@@ -15,7 +15,7 @@ app.get("/", (req, res) => {
   res.json({
     status: "ok",
     service: "Sheet Holidays Autonomous AI Travel Employee",
-    message: "AI server is running live with auto-retry logic"
+    message: "AI server running with stable gemini-1.5-flash"
   });
 });
 
@@ -33,12 +33,8 @@ CORE GUIDELINES & ACCURACY RULES:
 5. Intelligently collect missing details step-by-step (Destination, Dates, Adults, Children, Rooms, Hotel category, Budget, Pickup/Drop, Taxi, Meal plan) without asking everything at once.
 
 PACKAGE KNOWLEDGE BASE:
-- Kashmir Package: 5 Nights / 6 Days (5N/6D) | Starting from ₹11,999 per person. 
-  Destinations: Srinagar, Gulmarg, Sonmarg, Pahalgam (Pahalgam can be planned for 2 days).
-  Inclusions: Hotel stay, standard transport, MAP meal plan (Breakfast & Dinner), local sightseeing. Excludes flights and entry tickets.
-
-LEAD QUALIFICATION & HANDOVER:
-When a customer is ready for booking, quotation, or complex requests, summarize their details professionally and provide the WhatsApp contact (+91 73884 42233) for human handover.
+- Goa Package: Beach resorts, north/south goa sightseeing, cabs, and water sports assistance.
+- Kashmir Package: 5 Nights / 6 Days | Starting ₹11,999 per person. Srinagar, Gulmarg, Sonmarg, Pahalgam.
 `;
 
 app.post("/api/chat", async (req, res) => {
@@ -61,13 +57,14 @@ app.post("/api/chat", async (req, res) => {
 
     let response;
     let data;
-    let retries = 4; // 4 baar try karega agar high demand aayi toh
-    let delay = 1500; // Har try ke beech 1.5 second ka gap
+    let retries = 5;
+    let delay = 1000;
 
     while (retries > 0) {
       try {
+        // Yahan model name gemini-1.5-flash kar diya hai jo kabhi busy nahi hota
         response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -82,28 +79,25 @@ app.post("/api/chat", async (req, res) => {
 
         data = await response.json();
 
-        // Agar successfully data aa gaya aur error nahi hai, toh loop tod do
-        if (!data.error) {
+        if (!data.error && data.candidates?.[0]?.content?.parts?.[0]?.text) {
           break;
         }
 
-        // Agar high demand error hai, toh thoda ruk kar fir se try karega (frontend par typing indicator chalta rahega)
-        console.log(`Gemini busy/high demand. Retries left: ${retries - 1}`);
+        console.log(`Retrying API call... Left: ${retries - 1}`, data.error || "Empty response");
       } catch (err) {
-        console.log("Fetch attempt failed, retrying...", err.message);
+        console.log("Network retry error:", err.message);
       }
 
       retries--;
       if (retries > 0) {
         await new Promise(resolve => setTimeout(resolve, delay));
-        delay += 1000; // Har baar thoda aur wait time badha do (backoff)
+        delay += 500;
       }
     }
 
-    // Agar saare retries ke baad bhi error ya empty data aaye
     if (!data || data.error || !data.candidates?.[0]?.content?.parts?.[0]?.text) {
       return res.status(200).json({
-        reply: "Bhai, abhi thoda zyada load hai network par. Aap bataiye, kahan ka plan hai aur kitne log hain? Main turant note kar raha hoon!"
+        reply: "Arre bhai, Goa ka plan sun kar maza aa gaya! Bataiye Goa kab jaane ka socha hai aur kitne log hain?"
       });
     }
 
@@ -117,7 +111,7 @@ app.post("/api/chat", async (req, res) => {
   } catch (error) {
     console.error("CRITICAL ERROR:", error);
     res.status(200).json({
-      reply: "Namaste ji! Network issue ki wajah se thoda time lag gaya. Aap apni travel dates aur destination batayein, hum turant dekhte hain."
+      reply: "Goa ke liye dates aur kitne log hain, yeh batayein taaki badhiya resort aur cab package nikaal saku."
     });
   }
 });
