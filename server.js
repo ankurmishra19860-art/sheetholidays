@@ -14,7 +14,7 @@ app.use(express.json());
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
-    service: "Sheet Holidays AI (Gemini Direct)",
+    service: "Sheet Holidays AI",
     message: "AI server is running"
   });
 });
@@ -44,16 +44,14 @@ app.post("/api/chat", async (req, res) => {
 
     const geminiApiKey = process.env.GEMINI_API_KEY;
     if (!geminiApiKey) {
-      throw new Error("GEMINI_API_KEY is not configured in environment variables.");
+      return res.status(500).json({ reply: "Server Error: GEMINI_API_KEY missing in Render." });
     }
 
-    // Convert messages to Gemini format
     const contents = messages.slice(-20).map((msg) => ({
       role: msg.role === "assistant" ? "model" : "user",
       parts: [{ text: String(msg.content || "") }]
     }));
 
-    // Using the stable and correct gemini-1.5-flash model
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
       {
@@ -71,7 +69,10 @@ app.post("/api/chat", async (req, res) => {
     const data = await response.json();
 
     if (data.error) {
-      throw new Error(data.error.message || "Gemini API error");
+      // Yeh line Google API ki asli error seedha chat mein dikha degi
+      return res.status(200).json({
+        reply: `Google API Error: ${data.error.message} (Code: ${data.error.code})`
+      });
     }
 
     const reply =
@@ -84,9 +85,9 @@ app.post("/api/chat", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("GEMINI DIRECT CHAT ERROR:", error);
-    res.status(500).json({
-      error: error?.message || "AI request failed"
+    console.error("CRITICAL ERROR:", error);
+    res.status(200).json({
+      reply: `Server Crash Error: ${error.message}`
     });
   }
 });
