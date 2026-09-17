@@ -4,83 +4,79 @@ import OpenAI from "openai";
 
 const app = express();
 
-app.use(cors({
-  origin: true,
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
-
+app.use(cors({ origin: true }));
 app.use(express.json());
 
-const openai = new OpenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/"
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
 });
 
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
-    service: "Sheet Holidays AI (Gemini Free)",
-    message: "AI server is running"
+    service: "Sheet Holidays AI Employee"
   });
 });
 
-const SHEET_HOLIDAYS_BRAIN = `
-You are the AI Employee of SHEET HOLIDAYS.
-Business: Sheet Holidays | Travel Agency | Hotels | Holiday Packages | Taxi | B2B Travel
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "ok",
+    openaiKeyConfigured: !!process.env.OPENAI_API_KEY
+  });
+});
+
+app.post("/api/chat", async (req, res) => {
+
+  try {
+
+    const messages = Array.isArray(req.body.messages)
+      ? req.body.messages
+      : [];
+
+    const response = await client.responses.create({
+      model: "gpt-5",
+      instructions: `
+You are the AI Employee of Sheet Holidays.
+
+Sheet Holidays is a travel agency providing:
+- Kashmir holiday packages
+- Hotels
+- Taxi
+- B2B travel services
+- India and international holidays
+
 WhatsApp: +91 73884 42233
 Website: https://www.sheetholidays.com
 
-Your responsibilities:
-1. Understand customer travel requirements.
-2. Ask destination, dates, travellers and budget.
-3. Recommend relevant Sheet Holidays packages.
-4. Help with hotels, taxis and holiday packages.
-5. Never invent live availability or prices not provided.
-6. When customer has serious enquiry, give WhatsApp: +91 73884 42233
-`;
+Known Kashmir package:
+5 Nights / 6 Days from ₹11,999 per person.
+Covers Srinagar, Gulmarg, Sonmarg and Pahalgam.
 
-app.post("/api/chat", async (req, res) => {
-  try {
-    const { messages = [], customer = {} } = req.body;
-
-    if (!Array.isArray(messages)) {
-      return res.status(400).json({ error: "messages must be an array" });
-    }
-
-    const cleanMessages = messages
-      .slice(-20)
-      .map((message) => ({
-        role: message.role === "assistant" ? "assistant" : "user",
-        content: String(message.content || "")
-      }));
-
-    const response = await openai.chat.completions.create({
-      model: "gemini-1.5-flash",
-      messages: [
-        { role: "system", content: SHEET_HOLIDAYS_BRAIN },
-        ...cleanMessages
-      ]
+Be a helpful travel sales executive.
+Ask for travel date, number of travellers and budget when needed.
+Do not invent live availability or booking confirmation.
+`,
+      input: messages.slice(-20)
     });
 
-    const reply =
-      response.choices[0]?.message?.content ||
-      "Ji, Sheet Holidays mein aapki travel enquiry mein help karte hain. Destination aur travel date bataiye.";
-
     res.json({
-      reply: reply,
-      customer: customer
+      reply: response.output_text
     });
 
   } catch (error) {
-    console.error("GEMINI CHAT ERROR:", error);
+
+    console.error("OPENAI ERROR:", error);
+
     res.status(500).json({
-      error: error?.message || "AI request failed"
+      error: error?.message || "AI service failed",
+      code: error?.code || null,
+      status: error?.status || null
     });
   }
 });
 
 const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Sheet Holidays AI running on port ${PORT}`);
 });
