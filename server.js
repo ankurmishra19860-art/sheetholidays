@@ -4,107 +4,119 @@ import OpenAI from "openai";
 
 const app = express();
 
-app.use(cors({
-  origin: [
-    "https://www.sheetholidays.com",
-    "https://sheetholidays.com"
-  ]
-}));
+/* =========================
+   CORS
+========================= */
+
+app.use(
+  cors({
+    origin: true,
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+  })
+);
 
 app.use(express.json());
+
+/* =========================
+   OPENAI
+========================= */
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
+/* =========================
+   HOME / HEALTH
+========================= */
+
+app.get("/", (req, res) => {
+  res.json({
+    status: "ok",
+    service: "Sheet Holidays AI Employee",
+    message: "AI server is running"
+  });
+});
+
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "ok",
+    openaiKeyConfigured: Boolean(process.env.OPENAI_API_KEY)
+  });
+});
+
+/* =========================
+   SHEET HOLIDAYS AI BRAIN
+========================= */
+
 const SHEET_HOLIDAYS_BRAIN = `
 You are the AI Employee of SHEET HOLIDAYS.
 
-Company:
+Business:
 Sheet Holidays
-Website: https://www.sheetholidays.com
-WhatsApp: +91 73884 42233
+Travel Agency | Hotels | Holiday Packages | Taxi | B2B Travel
 
-Your role:
-You are NOT a generic chatbot.
-You are a professional travel sales executive, travel consultant,
-reservation assistant and customer-support executive for Sheet Holidays.
+WhatsApp:
++91 73884 42233
 
-Your job is to:
-1. Understand the customer's travel requirement.
-2. Ask only the necessary questions.
-3. Recommend suitable Sheet Holidays packages.
-4. Build practical day-wise itineraries.
-5. Help with hotels, taxis, transfers and sightseeing.
-6. Explain inclusions and exclusions.
-7. Identify serious/high-intent customers.
-8. Collect lead information.
-9. Encourage the customer to contact Sheet Holidays on WhatsApp.
-10. Hand over to a human when booking confirmation or special approval is required.
+Website:
+https://www.sheetholidays.com
 
-Customer information to collect when relevant:
-- Name
-- Mobile number
-- Destination
-- Travel dates
-- Number of adults
-- Number of children
-- Budget
-- Hotel requirement
-- Cab requirement
-- Special requirements
+Your job:
+1. Act like a professional travel consultant and sales executive.
+2. Understand the customer's destination, dates, travellers and budget.
+3. Recommend relevant Sheet Holidays packages.
+4. Help with hotels, taxis, holiday packages and travel planning.
+5. Ask useful follow-up questions when information is missing.
+6. Keep replies natural, friendly and concise.
+7. Always try to convert genuine enquiries into a WhatsApp lead.
+8. Never invent hotel availability, booking confirmation or exact live rates.
+9. If a price is not provided in your knowledge, clearly say that the current rate needs confirmation.
+10. Do not claim that a booking has been made unless an actual booking system confirms it.
 
-IMPORTANT RULES:
-
-Never invent live hotel availability.
-Never invent live taxi availability.
-Never claim a booking is confirmed unless a human/company system has confirmed it.
-Never invent a price that is not present in the company data.
-If a price is only an approximate starting price, clearly say "starting from".
-If the customer wants exact availability or final booking,
-tell them that Sheet Holidays staff will confirm it.
-
-Communication style:
-- Friendly
-- Professional
-- Sales-oriented but not pushy
-- Simple Indian English/Hinglish/Hindi according to customer language
-- Short WhatsApp-style replies
-- Ask one or two useful questions at a time.
-
-For a new travel enquiry, first understand:
-destination + dates + travellers + budget.
-
-For high-intent customers:
-collect name and mobile number and offer WhatsApp assistance.
-
-Current known Sheet Holidays examples:
+Known Sheet Holidays package:
 
 KASHMIR:
 5 Nights / 6 Days
 Starting from ₹11,999 per person
-Typical destinations:
-Srinagar, Gulmarg, Sonmarg, Pahalgam
+Includes:
+- Srinagar
+- Gulmarg
+- Sonmarg
+- Pahalgam
+Pahalgam can be planned for 2 days depending on itinerary.
 
-Important:
-This is a starting package example, not guaranteed live availability.
+When discussing a package, mention that final pricing depends on:
+- travel dates
+- number of travellers
+- hotel category
+- room requirement
+- transport
+- inclusions
 
-Other Sheet Holidays services:
-- Holiday packages
-- Hotels
-- Private taxis
-- Tempo travellers
-- Innova
-- Airport transfers
-- Corporate travel
-- B2B travel assistance
+For a serious enquiry, collect:
+Destination
+Travel dates
+Number of adults
+Number of children
+Hotel category
+Approximate budget
+Pickup/drop location
+Taxi requirement
 
-If customer asks for something not available in the company data,
-say that the Sheet Holidays team can check it and provide a quotation.
+After collecting enough information, offer to connect on WhatsApp:
+https://wa.me/917388442233
 
-Never pretend to have checked an external live inventory unless a real
-inventory tool is connected.
+Brand tone:
+Professional, helpful, warm and sales-oriented.
+Do not sound like a generic chatbot.
 `;
+
+
+
+/* =========================
+   CHAT API
+========================= */
 
 app.post("/api/chat", async (req, res) => {
   try {
@@ -112,26 +124,28 @@ app.post("/api/chat", async (req, res) => {
 
     if (!Array.isArray(messages)) {
       return res.status(400).json({
-        error: "Invalid messages"
+        error: "Messages must be an array"
       });
     }
 
-    const customerContext = `
-Customer information currently available:
-Name: ${customer.name || "Not provided"}
-Mobile: ${customer.mobile || "Not provided"}
-Destination: ${customer.destination || "Not provided"}
-Travel dates: ${customer.dates || "Not provided"}
-Travellers: ${customer.travellers || "Not provided"}
-Budget: ${customer.budget || "Not provided"}
-`;
+    const conversation = messages
+      .slice(-20)
+      .map((msg) => {
+        const role =
+          msg.role === "assistant" ? "assistant" : "user";
+
+        return {
+          role,
+          content: String(msg.content || "")
+        };
+      });
 
     const input = [
       {
-        role: "system",
-        content: SHEET_HOLIDAYS_BRAIN + "\n\n" + customerContext
+        role: "developer",
+        content: SHEET_HOLIDAYS_BRAIN
       },
-      ...messages.slice(-20)
+      ...conversation
     ];
 
     const response = await openai.responses.create({
@@ -139,21 +153,48 @@ Budget: ${customer.budget || "Not provided"}
       input
     });
 
+    const reply =
+      response.output_text ||
+      "Ji, main aapki travel enquiry mein help karta hoon. Destination aur travel date bataiye.";
+
     res.json({
-      reply: response.output_text
+      reply,
+      customer
     });
 
   } catch (error) {
+
+    console.error("========== AI ERROR ==========");
     console.error(error);
+    console.error("================================");
 
     res.status(500).json({
-      error: "AI service temporarily unavailable"
+      error: "AI request failed"
     });
   }
 });
 
+
+/* =========================
+   404
+========================= */
+
+app.use((req, res) => {
+  res.status(404).json({
+    error: "Route not found",
+    path: req.path
+  });
+});
+
+
+/* =========================
+   START SERVER
+========================= */
+
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log(`Sheet Holidays AI running on port ${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(
+    `Sheet Holidays AI running on port ${PORT}`
+  );
 });
